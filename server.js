@@ -5,6 +5,7 @@ const passport = require("passport");
 
 const users = require("./routes/api/users");
 const history = require("./routes/api/history");
+const hydra = require("./routes/api/hydra-edition");
 
 const app = express();
 
@@ -27,6 +28,7 @@ require("./config/passport")(passport);
 
 app.use("/api/users", users);
 app.use("/api/history", history);
+app.use("/api/hydra", hydra);
 
 const port = process.env.PORT || 5000;
 

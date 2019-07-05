@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
-const HydraEditionSchema = new Schema(
+const HydraEdition2Schema = new Schema(
   {
     version: {
       type: String,
@@ -12,7 +12,7 @@ const HydraEditionSchema = new Schema(
   { strict: false }
 );
 
-module.exports = HydraEdition = mongoose.model(
-  "hydraeditions",
-  HydraEditionSchema
+module.exports = HydraEdition2 = mongoose.model(
+  "hydraeditions2",
+  HydraEdition2Schema
 );
