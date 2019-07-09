@@ -11,16 +11,9 @@ const SectionSchema = new Schema(
       type: String,
       required: true
     },
-    text: {
-      type: String,
-      required: false
-    }
+    content: [Schema.Types.Mixed]
   },
   { strict: false }
 );
-
-SectionSchema.add({
-  sections: { type: mongoose.Schema.Types.ObjectId, ref: "sections" }
-});
 
 module.exports = Section = mongoose.model("sections", SectionSchema);
