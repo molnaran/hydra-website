@@ -31,22 +31,4 @@ router.post("/addsection", (req, res) => {
   );
 });
 
-//@route    POST api/hydra/add
-//@desc     Login user / Returning the JWT
-//@access   Public
-router.post("/addsection2", (req, res) => {
-  const section = new Section({
-    title: "1.1.0.ALPHA",
-    subsections: [
-      {
-        title: "alfejezet"
-      }
-    ]
-  });
-  section
-    .save()
-    .then(user => res.json(user))
-    .catch(err => console.log(err));
-});
-
 module.exports = router;

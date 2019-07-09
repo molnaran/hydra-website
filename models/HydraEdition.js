@@ -7,7 +7,7 @@ const HydraEditionSchema = new Schema(
       type: String,
       required: true
     },
-    sections: [Schema.Types.Mixed]
+    sections: { type: mongoose.Schema.Types.ObjectId, ref: "sections" }
   },
   { strict: false }
 );
