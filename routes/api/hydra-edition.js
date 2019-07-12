@@ -7,7 +7,7 @@ const Image = require("../../models/Image");
 var ObjectId = require("mongoose").Types.ObjectId;
 
 //@route    GET api/hydra/:id
-//@desc     Login user / Returning the JWT
+//@desc     Finding and returning section with specified id
 //@access   Public
 router.get("/:id", (req, res) => {
   Section.findOne({ _id: req.params.id }).then(section => {
@@ -15,10 +15,10 @@ router.get("/:id", (req, res) => {
   });
 });
 
-//@route    POST api/hydra/create
-//@desc     Add section
+//@route    POST api/hydra/:id?/section
+//@desc     Add section to s
 //@access   Public
-router.post("/section", (req, res) => {
+router.post("/:id?/section", (req, res) => {
   const newSection = new Section({
     version: req.body.version,
     title: req.body.title
@@ -26,61 +26,50 @@ router.post("/section", (req, res) => {
   newSection
     .save()
     .then(section => {
-      if (req.body.parentId) {
-        const sectionRef = {
-          title: section.title,
-          _id: new ObjectId(section._id)
-        };
-        var index;
-        if (req.body.position !== null || req.body.position !== undefined) {
-          index = req.body.position;
-        } /*
-        Section.findByIdAndUpdate(
-          req.body.parentId,
-          { $push: { content: { $each: [sectionRef], $position: index } } },
-          { upsert: true, useFindAndModify: false, new: true },
-          function(err, doc) {
-            if (err) return res.send(500, { error: err });
-            return res.json(doc);
-          }
-        );*/
-        addSubsection(sectionRef, req.body.parentId, index, (err, section) => {
+      const parentid =
+        req.params.id !== undefined || req.params.id == "root"
+          ? req.params.id
+          : "root";
+      const sectionRef = {
+        title: section.title,
+        _id: new ObjectId(section._id)
+      };
+      var position;
+      if (req.body.position !== null || req.body.position !== undefined) {
+        position = req.body.position;
+      }
+      if (parentid === "root") {
+        return res.json(section);
+      } else {
+        addSectionRef(sectionRef, parentid, position, (err, section) => {
           if (err) return res.send(500, { error: err });
+          section.parentid = parentid;
           return res.json(section);
         });
-      } else {
-        return res.send("succesfully saved");
       }
     })
     .catch(err => console.log(err));
 });
-const addSubsection = (sectionRef, parentId, position, callback) => {
+
+const addSectionRef = (sectionRef, parentid, position, callback) => {
+  if (sectionRef === null) throw new Error("Section not found!");
+  const section = {
+    title: sectionRef.title,
+    _id: new ObjectId(sectionRef._id)
+  };
+
   var modifiers = {
-    content: { $each: [sectionRef] }
+    content: { $each: [section] }
   };
   if (Number.isInteger(position)) {
     modifiers.content.$position = position;
   }
   Section.findByIdAndUpdate(
-    parentId,
+    parentid,
     { $push: modifiers },
     { upsert: true, useFindAndModify: false, new: true },
-    (err, section) => callback(err, section)
+    (err, section) => callback(err, sectionRef)
   );
-};
-
-const addSection = (sectionRef, parent, callback) => {
-  if (sectionRef === null) throw new Error("Section not found!");
-  if (parent === undefined || parent === null) throw new Error("asd");
-  if (parent.id !== "root") {
-    const section = {
-      title: sectionRef.title,
-      _id: new ObjectId(sectionRef._id)
-    };
-    addSubsection(section, parent.id, parent.position, callback);
-  } else {
-    callback(null, { msg: "Section moved to root!" });
-  }
 };
 /*
 router.put("/section/:id", (req, res) => {
@@ -194,18 +183,28 @@ router.put("/section/:id", (req, res) => {
           console.log(err);
           return;
         });
-        addSection(moveSection, newParent, (err, section) => {
-          if (err) return res.send(500, { error: err });
-          return res.json(section);
-        });
+        addSectionRef(
+          moveSection,
+          newParent.id,
+          newParent.position,
+          (err, section) => {
+            if (err) return res.send(500, { error: err });
+            return res.json(section);
+          }
+        );
       } else {
         // Section must be on the root, we need to find it for the needed values ()
         Section.findById(req.params.id).then(section => {
           moveSection = section !== null ? section : null;
-          addSection(moveSection, newParent, (err, section) => {
-            if (err) return res.send(500, { error: err });
-            return res.json(section);
-          });
+          addSectionRef(
+            moveSection,
+            newParent.id,
+            newParent.position,
+            (err, section) => {
+              if (err) return res.send(500, { error: err });
+              return res.json(section);
+            }
+          );
         });
       }
     }
