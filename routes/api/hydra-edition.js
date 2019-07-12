@@ -27,7 +27,10 @@ router.post("/section", (req, res) => {
     .save()
     .then(section => {
       if (req.body.parentId) {
-        const sectionRef = { title: section.title, ref: section._id };
+        const sectionRef = {
+          title: section.title,
+          _id: new ObjectId(section._id)
+        };
         var index;
         if (req.body.position !== null || req.body.position !== undefined) {
           index = req.body.position;
@@ -51,7 +54,6 @@ router.post("/section", (req, res) => {
     })
     .catch(err => console.log(err));
 });
-
 const addSubsection = (sectionRef, parentId, position, callback) => {
   var modifiers = {
     content: { $each: [sectionRef] }
@@ -67,14 +69,28 @@ const addSubsection = (sectionRef, parentId, position, callback) => {
   );
 };
 
+const addSection = (sectionRef, parent, callback) => {
+  if (sectionRef === null) throw new Error("Section not found!");
+  if (parent === undefined || parent === null) throw new Error("asd");
+  if (parent.id !== "root") {
+    const section = {
+      title: sectionRef.title,
+      _id: new ObjectId(sectionRef._id)
+    };
+    addSubsection(section, parent.id, parent.position, callback);
+  } else {
+    callback(null, { msg: "Section moved to root!" });
+  }
+};
+/*
 router.put("/section/:id", (req, res) => {
   const oldParent = req.body.oldparent;
   const newParent = req.body.newparent;
   Section.findById(req.params.id, function(err, section) {
-    var sectionRef = { ref: section._id, title: section.title };
+    var sectionRef = { _id: section._id, title: section.title };
     Section.findByIdAndUpdate(
       oldParent.id,
-      { $pull: { content: sectionRef } },
+      { $pull: { content: sectionRef._id } },
       { multi: true, useFindAndModify: false, new: true },
       function(err, doc) {
         if (err) return res.send(500, { error: err });
@@ -94,29 +110,107 @@ router.put("/section/:id", (req, res) => {
     );
   });
 });
-
+*/
 /*
 router.put("/section/:id", (req, res) => {
   const oldParent = req.body.oldparent;
   const newParent = req.body.newparent;
   Section.findByIdAndUpdate(
-    oldParent,
+    oldParent.id,
     {
       $pull: {
-        content: { ref: new ObjectId(req.params.id) }
+        content: { _id: new ObjectId(req.params.id) }
       }
     },
     { multi: true, useFindAndModify: false, new: true },
     function(err, doc) {
       if (err) return res.send(500, { error: err });
       if (newParent.id !== null || newParent.id !== undefined) {
-
       }
       return res.json(doc);
     }
   );
 });
 */
+/*
+// Moving subdocument with oldparent.id and newparent.id
+router.put("/section/:id", (req, res) => {
+  const oldParent = req.body.oldparent;
+  const newParent = req.body.newparent;
+  Section.findById(oldParent.id, function(err, section) {
+    if (section !== null) {
+      var removeItems = [];
+      var remainingItems = [];
+      section.content.forEach(element => {
+        if (element._id == req.params.id) {
+          removeItems.push(element);
+        } else {
+          remainingItems.push(element);
+        }
+      });
+      section.content = remainingItems;
+      section.save(err => {
+        console.log(err);
+      });
+    }
+    if (newParent !== undefined && removeItems.length > 0) {
+      addSubsection(
+        removeItems[0],
+        newParent.id,
+        newParent.position,
+        (err, section) => {
+          return res.json(section);
+        }
+      );
+    } else {
+      return res.json(removeItems[0]);
+    }
+  });
+});
+*/
+// The section endpoint should only be responsible for handling sections (no images, no paragraphs, etc.)
+router.put("/section/:id", (req, res) => {
+  const newParent = req.body.newparent;
+  var moveSection;
+
+  //Trying to find parent
+  Section.findOne({ "content._id": new ObjectId(req.params.id) }).then(
+    section => {
+      if (section != null) {
+        //No parent found => It's a section on the root
+        var removeItems = [];
+        var remainingItems = [];
+        section.content.forEach(element => {
+          if (element._id == req.params.id) {
+            removeItems.push(element);
+          } else {
+            remainingItems.push(element);
+          }
+        });
+        section.content = remainingItems;
+
+        moveSection = removeItems.length > 0 ? removeItems[0] : null;
+        section.save(err => {
+          console.log(err);
+          return;
+        });
+        addSection(moveSection, newParent, (err, section) => {
+          if (err) return res.send(500, { error: err });
+          return res.json(section);
+        });
+      } else {
+        // Section must be on the root, we need to find it for the needed values ()
+        Section.findById(req.params.id).then(section => {
+          moveSection = section !== null ? section : null;
+          addSection(moveSection, newParent, (err, section) => {
+            if (err) return res.send(500, { error: err });
+            return res.json(section);
+          });
+        });
+      }
+    }
+  );
+});
 
 //@route    POST api/hydra/add
 //@desc     Login user / Returning the JWT
@@ -139,15 +233,11 @@ router.post("/addparagraph", (req, res) => {
     title: "First Paragraph",
     text: "Lorem ipsum"
   });
-  HydraEdition.updateOne(
-    { version: req.body.version },
-    { $push: { content: newParagraph } },
-    { upsert: true },
-    function(err, doc) {
-      if (err) return res.send(500, { error: err });
-      return res.send("succesfully saved");
-    }
-  );
+  const position = req.body.position;
+  addSubsection(newParagraph, req.body.parentId, position, (err, section) => {
+    if (err) return res.send(500, { error: err });
+    return res.json(section);
+  });
 });
 
 //@route    POST api/hydra/add
