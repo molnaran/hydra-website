@@ -9,6 +9,10 @@ const ParagraphSchema = new Schema({
   text: {
     type: String,
     required: true
+  },
+  contenttype: {
+    type: String,
+    default: "paragraph"
   }
 });
 

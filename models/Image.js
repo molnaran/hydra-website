@@ -9,6 +9,10 @@ const FigureSchema = new Schema({
   path: {
     type: String,
     required: true
+  },
+  contenttype: {
+    type: String,
+    default: "image"
   }
 });
 
