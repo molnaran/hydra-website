@@ -10,6 +10,7 @@ const section = require("./routes/api/section");
 const app = express();
 
 //Body Parser middleware
+app.use("/uploads/", express.static("uploads"));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 

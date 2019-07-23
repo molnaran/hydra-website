@@ -1,5 +1,32 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const util = require("util");
+const unlink = util.promisify(fs.unlink);
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + file.originalname);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 1024 * 1024 * 5 },
+  fileFilter: fileFilter
+});
 
 const asyncMiddleware = require("../../utils/asyncMiddleware");
 const HydraEdition = require("../../models/HydraEdition");
@@ -42,7 +69,6 @@ router.post(
 router.delete(
   "/:id",
   asyncMiddleware(async (req, res, next) => {
-    console.log(req.params.id);
     if (!req.params.id) throw new Error("content id not found");
     var result = await Section.updateMany(
       {},
@@ -138,6 +164,7 @@ router.put(
 // !!!Image feltöltés szükséges még!!!
 router.post(
   "/:id/content",
+  upload.single("image"),
   asyncMiddleware(async (req, res, next) => {
     if (req.params.id === undefined) throw new Error("parentid is mandatory");
     switch (req.body.type) {
@@ -159,7 +186,9 @@ router.post(
         if (req.body.sectionref == req.params.id)
           throw new Error("sectionref cannot be added to itself");
 
-        var sectionToAdd = await Section.findOne({ _id: req.body.sectionref });
+        var sectionToAdd = await Section.findOne({
+          _id: req.body.sectionref
+        });
         if (!sectionToAdd) throw new Error("section to be added not found");
 
         content = new SectionRef({
@@ -169,8 +198,11 @@ router.post(
         break;
       case "image":
         if (!req.body.title) throw new Error("image title not found");
-        if (!req.body.path) throw new Error("image path not found");
-        content = new Image({ title: req.body.title, path: req.body.path });
+        if (!req.file) throw new Error("image not found");
+        content = new Image({
+          title: req.body.title,
+          path: (req.file.destination + "/" + req.file.filename).substring(2)
+        });
         break;
       case "paragraph":
         if (!req.body.title) throw new Error("paragraph title not found");
@@ -220,7 +252,16 @@ router.delete(
     });
 
     const removeContent = removeItems.length > 0 ? removeItems[0] : null;
+
     if (removeContent === null) throw new Error("Object to be moved not found");
+    switch (removeContent.contenttype) {
+      case "image":
+        const normalizedPath = path.normalize(removeContent.path);
+        if (!normalizedPath.startsWith("uploads"))
+          throw Error("resource cannot be deleted");
+        await unlink(normalizedPath);
+        break;
+    }
     parentSection.content = remainingItems;
     await parentSection.save();
     return res.json(parentSection);
