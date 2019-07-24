@@ -32,7 +32,7 @@ app.use("/api/history", history);
 app.use("/api/section", section);
 
 app.use((err, req, res, next) => {
-  res.send({ error: err.message });
+  return res.json({ error: err.message });
 });
 
 const port = process.env.PORT || 5000;

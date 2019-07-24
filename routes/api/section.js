@@ -5,7 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const util = require("util");
 const unlink = util.promisify(fs.unlink);
-
+const passport = require("passport");
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads");
@@ -14,7 +14,6 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + file.originalname);
   }
 });
-
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
     cb(null, true);
@@ -29,7 +28,7 @@ const upload = multer({
 });
 
 const asyncMiddleware = require("../../utils/asyncMiddleware");
-const HydraEdition = require("../../models/HydraEdition");
+const authMiddleware = require("../../utils/authorizationMiddleware");
 const Section = require("../../models/Section");
 const SectionRef = require("../../models/SectionRef");
 const Paragraph = require("../../models/Paragraph");
@@ -49,9 +48,11 @@ router.get(
 
 //@route    POST api/section/
 //@desc     Add new section to root
-//@access   Public
+//@access   Private, admin role needed
 router.post(
   "/",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasAnyRole("admin", "superadmin"),
   asyncMiddleware(async (req, res, next) => {
     const newSection = new Section({
       version: req.body.version,
@@ -65,9 +66,11 @@ router.post(
 
 //@route    DELETE api/section/:id
 //@desc     Delete section with specified id
-//@access   Public
+//@access   Private, admin role needed
 router.delete(
   "/:id",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasAnyRole("admin", "superadmin"),
   asyncMiddleware(async (req, res, next) => {
     if (!req.params.id) throw new Error("content id not found");
     var result = await Section.updateMany(
@@ -75,25 +78,17 @@ router.delete(
       { $pull: { content: { section: new ObjectId(req.params.id) } } },
       { useFindAndModify: false, new: true }
     );
-
-    // await Section.deleteOne({_id: req.body.id})
-    /*
-    var result = await Section.updateMany(
-      {},
-      { $pull: { content: { section: req.params.id } } },
-      { useFindAndModify: false, new: true }
-    );
-    */
-
     return res.json(result);
   })
 );
 
 //@route    PUT api/section/:id
 //@desc     Move a content element from oldparent (non-root) section to newparent (non-root) section
-//@access   Public
+//@access   Private, admin role needed
 router.put(
   "/:id",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasAnyRole("admin", "superadmin"),
   asyncMiddleware(async (req, res, next) => {
     if (
       req.body.newparentid === undefined ||
@@ -160,11 +155,12 @@ router.put(
 
 //@route    POST api/section/:id/content
 //@desc     Add new content to section with specified id
-//@access   Public
-// !!!Image feltöltés szükséges még!!!
+//@access   Private, admin role needed
 router.post(
   "/:id/content",
   upload.single("image"),
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasAnyRole("admin", "superadmin"),
   asyncMiddleware(async (req, res, next) => {
     if (req.params.id === undefined) throw new Error("parentid is mandatory");
     switch (req.body.type) {
@@ -223,9 +219,11 @@ router.post(
 
 //@route    DELETE api/section/:id/content/:contentid
 //@desc     Login user / Returning the JWT
-//@access   Public
+//@access   Private, admin role needed
 router.delete(
   "/:id/content/:contentid",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasAnyRole("admin", "superadmin"),
   asyncMiddleware(async (req, res) => {
     if (
       req.params.id === null ||

@@ -19,9 +19,14 @@ const UserSchema = new Schema({
     type: String,
     required: false
   },
-  role: {
-    type: String,
-    default: "basic"
+  roles: {
+    type: [
+      {
+        type: String,
+        enum: ["user", "admin", "superadmin"]
+      }
+    ],
+    default: ["user"]
   },
   date: {
     type: Date,

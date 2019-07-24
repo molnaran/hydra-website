@@ -6,26 +6,24 @@ const passport = require("passport");
 
 const validateRegisterInput = require("../../validation/register");
 const validateLoginInput = require("../../validation/login");
+const authMiddleware = require("../../utils/authorizationMiddleware");
+
+const asyncMiddleware = require("../../utils/asyncMiddleware");
 
 const User = require("../../models/User");
 const keys = require("../../config/keys");
 
-//@route    GET api/users/test
-//@desc     Tests users route
-//@access   Public
-router.get("/test", (req, res) => res.json({ msg: "Users router works!" }));
-
 //@route    POST api/users/register
 //@desc     Register user
 //@access   Public
-router.post("/register", (req, res) => {
-  const { errors, isValid } = validateRegisterInput(req.body);
-
-  if (!isValid) {
-    return res.status(400).json(errors);
-  }
-
-  User.findOne({ email: req.body.email }).then(user => {
+router.post(
+  "/register",
+  asyncMiddleware(async (req, res, next) => {
+    const { errors, isValid } = validateRegisterInput(req.body);
+    if (!isValid) {
+      return res.status(400).json(errors);
+    }
+    var user = await User.findOne({ email: req.body.email });
     if (user) {
       errors.email = "Email already exists";
       return res.status(400).json(errors);
@@ -35,65 +33,53 @@ router.post("/register", (req, res) => {
         email: req.body.email,
         password: req.body.password
       });
-
-      bcrypt.genSalt(10, (err, salt) => {
-        bcrypt.hash(newUser.password, salt, (err, hash) => {
-          if (err) throw err;
-          newUser.password = hash;
-          newUser
-            .save()
-            .then(user => res.json(user))
-            .catch(err => console.log(err));
-        });
-      });
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(newUser.password, salt);
+      newUser.password = hash;
+      var savedUser = await newUser.save();
+      return res.json(savedUser);
     }
-  });
-});
+  })
+);
 
 //@route    POST api/users/login
 //@desc     Login user / Returning the JWT
 //@access   Public
-router.post("/login", (req, res) => {
-  const { errors, isValid } = validateLoginInput(req.body);
+router.post(
+  "/login",
+  asyncMiddleware(async (req, res, next) => {
+    const { errors, isValid } = validateLoginInput(req.body);
+    if (!isValid) {
+      return res.status(400).json(errors);
+    }
+    const email = req.body.email;
+    const password = req.body.password;
 
-  if (!isValid) {
-    return res.status(400).json(errors);
-  }
-
-  const email = req.body.email;
-  const password = req.body.password;
-
-  User.findOne({ email }).then(user => {
+    var user = await User.findOne({ email });
     if (!user) {
       errors.email = "User not found!";
       return res.status(404).json(errors);
     }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (isMatch) {
+      // User matched
+      const payload = {
+        id: user.id,
+        name: user.name
+      };
 
-    bcrypt.compare(password, user.password).then(isMatch => {
-      if (isMatch) {
-        // User matched
+      //Sign Token
+      const token = await jwt.sign(payload, keys.secretOrKey, {
+        expiresIn: 3600 * 8
+      });
 
-        const payload = {
-          id: user.id,
-          name: user.name
-        };
-
-        //Sign Token
-        jwt.sign(
-          payload,
-          keys.secretOrKey,
-          { expiresIn: 3600 },
-          (err, token) => {
-            res.json({ success: true, token: "Bearer " + token });
-          }
-        );
-      } else {
-        errors.password = "Password incorrect!";
-        return res.status(400).json(errors);
-      }
-    });
-  });
-});
+      return res.json({ success: true, token: "Bearer " + token });
+    } else {
+      errors.password = "Password incorrect!";
+      return res.status(400).json(errors);
+    }
+  })
+);
 
 //@route    GET api/users/current
 //@desc     Return current user
@@ -101,9 +87,36 @@ router.post("/login", (req, res) => {
 router.get(
   "/current",
   passport.authenticate("jwt", { session: false }),
-  (req, res) => {
-    res.json({ id: req.user.id, name: req.user.name, email: req.user.email });
-  }
+  asyncMiddleware(async (req, res, next) => {
+    var currentUser = await User.findById(req.user.id);
+    return res.json(currentUser);
+  })
 );
+
+//@route    GET api/users/current
+//@desc     Return current user
+//@access   Private
+router.get(
+  "/:id",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.restrictToSelf("id"),
+  asyncMiddleware(async (req, res, next) => {
+    return res.json({
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email
+    });
+  })
+);
+
+//authentication method for more control
+function authenticateJwtAdvanced(req, res, next) {
+  passport.authenticate("jwt", { session: false }, function(err, user, info) {
+    if (err) return next(err);
+    if (!user) return res.status(400).json({ msg: info });
+    req.user = user;
+    next();
+  })(req, res, next);
+}
 
 module.exports = router;
