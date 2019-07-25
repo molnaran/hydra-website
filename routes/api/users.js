@@ -3,9 +3,32 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
+const multer = require("multer");
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + file.originalname);
+  }
+});
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
+const uploadAvatar = multer({
+  storage: storage,
+  limits: { fileSize: 1024 * 1024 * 3 },
+  fileFilter: fileFilter
+});
 
 const validateRegisterInput = require("../../validation/register");
 const validateLoginInput = require("../../validation/login");
+const validateUpdateProfileInput = require("../../validation/update-profile-validation");
+const validateUpdateUser = require("../../validation/update-user-validation");
 const authMiddleware = require("../../utils/authorizationMiddleware");
 
 const asyncMiddleware = require("../../utils/asyncMiddleware");
@@ -29,15 +52,19 @@ router.post(
       return res.status(400).json(errors);
     } else {
       const newUser = new User({
-        name: req.body.name,
+        firstname: req.body.firstname,
+        lastname: req.body.lastname,
         email: req.body.email,
         password: req.body.password
       });
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(newUser.password, salt);
       newUser.password = hash;
-      var savedUser = await newUser.save();
-      return res.json(savedUser);
+      await newUser.save();
+      return res.json({
+        result: "Success",
+        data: filterObject(newUser, getReturnableFieldsForOwnProfile())
+      });
     }
   })
 );
@@ -85,30 +112,152 @@ router.post(
 //@desc     Return current user
 //@access   Private
 router.get(
-  "/current",
+  "/profile",
   passport.authenticate("jwt", { session: false }),
   asyncMiddleware(async (req, res, next) => {
-    var currentUser = await User.findById(req.user.id);
-    return res.json(currentUser);
-  })
-);
-
-//@route    GET api/users/current
-//@desc     Return current user
-//@access   Private
-router.get(
-  "/:id",
-  passport.authenticate("jwt", { session: false }),
-  authMiddleware.restrictToSelf("id"),
-  asyncMiddleware(async (req, res, next) => {
+    var currentUser = await User.findById(req.user.id).select(
+      getReturnableFieldsForOwnProfile(req.user.id)
+    );
     return res.json({
-      id: req.user.id,
-      name: req.user.name,
-      email: req.user.email
+      result: "Success",
+      data: currentUser
     });
   })
 );
 
+//@route    POST api/users/profile/avatar
+//@desc     Create avatar for profile
+//@access   Private
+router.post(
+  "/profile/avatar",
+  uploadAvatar.single("avatar"),
+  passport.authenticate("jwt", { session: false }),
+  asyncMiddleware(async (req, res, next) => {
+    if (!req.file) throw new Error("image not found");
+    const avatarPath = (
+      req.file.destination +
+      "/" +
+      req.file.filename
+    ).substring(2);
+    var currentUser = await User.findOneAndUpdate(
+      { _id: req.user.id },
+      { $set: { avatar: avatarPath } },
+      { upsert: false, useFindAndModify: false, new: true }
+    ).exec();
+    return res.json({
+      result: "Success!",
+      msg: "Avatar successfully uploaded!",
+      data: filterObject(currentUser, getReturnableFieldsForOwnProfile())
+    });
+  })
+);
+
+//@route    PATCH api/users/profile
+//@desc     Return current user
+//@access   Private
+router.patch(
+  "/profile",
+  passport.authenticate("jwt", { session: false }),
+  asyncMiddleware(async (req, res, next) => {
+    const { errors, isValid } = validateUpdateProfileInput(req.body);
+    if (!isValid) {
+      return res.status(400).json(errors);
+    }
+    var patchFields = filterObject(req.body, getUpdatableFieldsForOwnProfile());
+    var currentUser = await User.findOneAndUpdate(
+      { _id: req.user.id },
+      { $set: patchFields },
+      { upsert: false, useFindAndModify: false, new: true }
+    ).exec();
+    return res.json({
+      result: "Success!",
+      msg: "Profile successfully updated!",
+      data: filterObject(currentUser, getReturnableFieldsForOwnProfile())
+    });
+  })
+);
+
+//@route    DELETE api/users/profile
+//@desc     Return current user
+//@access   Private
+router.delete(
+  "/profile",
+  passport.authenticate("jwt", { session: false }),
+  asyncMiddleware(async (req, res, next) => {
+    var user = await User.findOneAndDelete({ _id: req.user.id });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ result: "Failure", msg: "User not found!" });
+    } else {
+      res.status(200).json({
+        result: "Success",
+        msg: "User successfully deleted!",
+        data: filterObject(user, getReturnableFieldsForOwnProfile())
+      });
+    }
+  })
+);
+
+//@route    GET api/users/:id
+//@desc     Return current user
+//@access   Private permissionlevel 2
+router.get(
+  "/:id",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasPermissionLevel(2),
+  asyncMiddleware(async (req, res, next) => {
+    var user = await User.findById(req.user.id).select(
+      getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
+    );
+    return res.json(user);
+  })
+);
+
+//@route    GET api/users/
+//@desc     GET all users
+//@access   Private, permissionlevel 2
+router.get(
+  "/",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasPermissionLevel(2),
+  asyncMiddleware(async (req, res, next) => {
+    console.log(req.user.permissionlevel);
+    const users = await User.find({}).select(
+      getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
+    );
+    return res.json(users);
+  })
+);
+
+router.patch(
+  "/:id",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasPermissionLevel(2),
+  asyncMiddleware(async (req, res, next) => {
+    const { errors, isValid } = validateUpdateUser(req.body);
+    if (!isValid) {
+      return res.status(400).json(errors);
+    }
+    var patchFields = filterObject(
+      req.body,
+      getUpdatableFieldsWithPermissionlevel(req.user.permissionlevel)
+    );
+
+    var currentUser = await User.findOneAndUpdate(
+      { _id: req.params.id },
+      { $set: patchFields },
+      { upsert: false, useFindAndModify: false, new: true }
+    ).exec();
+    return res.json({
+      result: "Success!",
+      data: filterObject(
+        currentUser,
+        getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
+      )
+    });
+  })
+);
 //authentication method for more control
 function authenticateJwtAdvanced(req, res, next) {
   passport.authenticate("jwt", { session: false }, function(err, user, info) {
@@ -119,4 +268,41 @@ function authenticateJwtAdvanced(req, res, next) {
   })(req, res, next);
 }
 
+const getUpdatableFieldsWithPermissionlevel = permissionlevel => {
+  if (permissionlevel === 3) {
+    return ["enabled", "permissionlevel"];
+  } else if (permissionlevel === 2) {
+    return ["enabled"];
+  }
+  return [];
+};
+
+const getReturnableFieldsWithPermissionlevel = permissionlevel => {
+  var basicFields = ["_id", "firstname", "lastname", "email", "avatar"];
+  if (permissionlevel === 2) {
+    basicFields.push("date", "enabled");
+  }
+  if (permissionlevel === 3) {
+    basicFields.push("enabled", "permissionlevel", "date");
+  }
+  return basicFields;
+};
+
+const getUpdatableFieldsForOwnProfile = () => {
+  return ["firstname", "lastname", "email", "password"];
+};
+
+const getReturnableFieldsForOwnProfile = () => {
+  return ["_id", "firstname", "lastname", "email", "avatar"];
+};
+
+const filterObject = (objectToFilter, allowedFields) => {
+  var result = {};
+  allowedFields.forEach(function(key) {
+    if (key in objectToFilter) {
+      result[key] = objectToFilter[key];
+    }
+  });
+  return result;
+};
 module.exports = router;

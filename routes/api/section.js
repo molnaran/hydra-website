@@ -52,7 +52,7 @@ router.get(
 router.post(
   "/",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasAnyRole("admin", "superadmin"),
+  authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     const newSection = new Section({
       version: req.body.version,
@@ -70,7 +70,7 @@ router.post(
 router.delete(
   "/:id",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasAnyRole("admin", "superadmin"),
+  authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     if (!req.params.id) throw new Error("content id not found");
     var result = await Section.updateMany(
@@ -88,7 +88,7 @@ router.delete(
 router.put(
   "/:id",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasAnyRole("admin", "superadmin"),
+  authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     if (
       req.body.newparentid === undefined ||
@@ -160,7 +160,7 @@ router.post(
   "/:id/content",
   upload.single("image"),
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasAnyRole("admin", "superadmin"),
+  authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     if (req.params.id === undefined) throw new Error("parentid is mandatory");
     switch (req.body.type) {
@@ -223,7 +223,7 @@ router.post(
 router.delete(
   "/:id/content/:contentid",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasAnyRole("admin", "superadmin"),
+  authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res) => {
     if (
       req.params.id === null ||

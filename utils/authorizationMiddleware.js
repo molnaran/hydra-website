@@ -9,25 +9,16 @@ const restrictToSelf = requestid => (req, res, next) => {
   }
 };
 
-const hasAnyRole = (...roles) => (req, res, next) => {
-  var allowed = false;
+const hasPermissionLevel = permissionlevel => (req, res, next) => {
   try {
-    if (req.user !== null) {
-      roles.forEach(role => {
-        if (req.user.roles.indexOf(role) > -1) {
-          allowed = true;
-          return;
-        }
-      });
-    }
-    if (allowed) {
+    if (req.user !== null && req.user.permissionlevel >= permissionlevel) {
       return next();
     } else {
-      return res.status(400).json({ msg: "Unauthorized" });
+      return res.status(401).json({ err: "Unauthorized" });
     }
   } catch (err) {
     return next(err);
   }
 };
 
-module.exports = { restrictToSelf, hasAnyRole };
+module.exports = { restrictToSelf, hasPermissionLevel };

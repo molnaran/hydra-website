@@ -6,6 +6,8 @@ const passport = require("passport");
 const users = require("./routes/api/users");
 const history = require("./routes/api/history");
 const section = require("./routes/api/section");
+const admin = require("./routes/api/admin");
+const authMiddleware = require("./utils/authorizationMiddleware");
 
 const app = express();
 
@@ -30,6 +32,12 @@ require("./config/passport")(passport);
 app.use("/api/users", users);
 app.use("/api/history", history);
 app.use("/api/section", section);
+app.use(
+  "/api/admin",
+  passport.authenticate("jwt", { session: false }),
+  authMiddleware.hasPermissionLevel(3),
+  admin
+);
 
 app.use((err, req, res, next) => {
   return res.json({ error: err.message });
