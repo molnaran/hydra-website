@@ -1,4 +1,4 @@
-const restrictToSelf = requestid => (req, res, next) => {
+const restrictToSelf = (requestid = null) => (req, res, next) => {
   if (!req.user) return res.status(400).json({ msg: "user not found" });
   if (req.params[requestid] === undefined)
     return res.status(400).json({ msg: "requestid queryparam not found" });
@@ -21,4 +21,33 @@ const hasPermissionLevel = permissionlevel => (req, res, next) => {
   }
 };
 
-module.exports = { restrictToSelf, hasPermissionLevel };
+const filterUserFields = (queryuserid = null) => (req, res, next) => {
+  console.log("filterUserFields");
+  var basicViewFields = ["_id", "firstname", "lastname", "email", "avatar"];
+  var ownFields = [];
+  switch (req.user.permissionlevel) {
+    case 2:
+      basicViewFields.push("date", "enabled");
+      break;
+    case 3:
+      basicViewFields.push("permissionlevel", "date");
+      break;
+  }
+  if (
+    queryuserid !== null &&
+    queryuserid === undefined &&
+    queryuserid === req.user.id
+  ) {
+    ownFields = ["_id", "firstname", "lastname", "email", "avatar"];
+  }
+  req.user.viewFields = [...basicViewFields, ...ownFields];
+  req.user.updatableFields = [
+    "_id",
+    "password",
+    "date",
+    ...req.user.viewFields
+  ];
+  next();
+};
+
+module.exports = { restrictToSelf, hasPermissionLevel, filterUserFields };

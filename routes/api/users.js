@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const multer = require("multer");
+const connect = require("connect");
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads");
@@ -30,6 +31,19 @@ const validateLoginInput = require("../../validation/login");
 const validateUpdateProfileInput = require("../../validation/update-profile-validation");
 const validateUpdateUser = require("../../validation/update-user-validation");
 const authMiddleware = require("../../utils/authorizationMiddleware");
+
+var restrictToSelfAndFilter = userid => {
+  var chain = connect();
+  chain.use(authMiddleware.restrictToSelf(userid));
+  chain.use(authMiddleware.filterUserFields(userid));
+  return chain;
+};
+const hasPermissionLevelAndFilter = (permissionlevel, userid) => {
+  var chain = connect();
+  chain.use(authMiddleware.hasPermissionLevel(permissionlevel));
+  chain.use(authMiddleware.filterUserFields(userid));
+  return chain;
+};
 
 const asyncMiddleware = require("../../utils/asyncMiddleware");
 
@@ -205,11 +219,9 @@ router.delete(
 router.get(
   "/:id",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasPermissionLevel(2),
+  restrictToSelfAndFilter("id"),
   asyncMiddleware(async (req, res, next) => {
-    var user = await User.findById(req.user.id).select(
-      getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
-    );
+    var user = await User.findById(req.user.id).select(req.user.viewFields);
     return res.json(user);
   })
 );
@@ -220,12 +232,10 @@ router.get(
 router.get(
   "/",
   passport.authenticate("jwt", { session: false }),
-  authMiddleware.hasPermissionLevel(2),
+  hasPermissionLevelAndFilter(2, "5d39be49c6c522493c4151fa"),
   asyncMiddleware(async (req, res, next) => {
     console.log(req.user.permissionlevel);
-    const users = await User.find({}).select(
-      getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
-    );
+    const users = await User.find({}).select(req.user.readfields);
     return res.json(users);
   })
 );
