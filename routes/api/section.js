@@ -73,12 +73,28 @@ router.delete(
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     if (!req.params.id) throw new Error("content id not found");
+    /*
     var result = await Section.updateMany(
       {},
       { $pull: { content: { section: new ObjectId(req.params.id) } } },
       { useFindAndModify: false, new: true }
     );
+    await Sections.deleteOne({ _id: req.params.id });
     return res.json(result);
+  */
+    await Promise.all([
+      await Section.updateMany(
+        {},
+        { $pull: { content: { section: new ObjectId(req.params.id) } } },
+        { useFindAndModify: false, new: true }
+      ),
+      await Section.deleteOne({ _id: req.params.id })
+    ]);
+    return res.json({
+      id: req.params.id,
+      result: "Success",
+      msg: "Resource deleted"
+    });
   })
 );
 

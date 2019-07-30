@@ -4,7 +4,7 @@ const bodyParser = require("body-parser");
 const passport = require("passport");
 
 const users = require("./routes/api/users");
-const history = require("./routes/api/history");
+const articlegroup = require("./routes/api/articlegroup");
 const section = require("./routes/api/section");
 const admin = require("./routes/api/admin");
 const authMiddleware = require("./utils/authorizationMiddleware");
@@ -30,7 +30,7 @@ app.use(passport.initialize());
 require("./config/passport")(passport);
 
 app.use("/api/users", users);
-app.use("/api/history", history);
+app.use("/api/articlegroup", articlegroup);
 app.use("/api/section", section);
 app.use(
   "/api/admin",
