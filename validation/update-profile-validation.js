@@ -10,6 +10,10 @@ module.exports = function validateUpdateProfileInput(data) {
   tempData.password = !isEmpty(data.password) ? data.password : "";
   tempData.password2 = !isEmpty(data.password2) ? data.password2 : "";
 
+  if (data.firstname !== null || data.firstname !== undefined) {
+    data.firstname = !isEmpty(data.firstname) ? data.firstname : "";
+  }
+
   if (
     !Validator.isEmpty(tempData.firstname) &&
     !Validator.isLength(tempData.firstname, { min: 2, max: 30 })

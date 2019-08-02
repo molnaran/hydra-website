@@ -19,7 +19,7 @@ app.use(bodyParser.json());
 const db = require("./config/keys").mondoURI;
 
 mongoose
-  .connect(db)
+  .connect(db, { useNewUrlParser: true })
   .then(() => console.log("MonboDB connected"))
   .catch(err => console.log(err));
 

@@ -11,7 +11,8 @@ const ArticleGroupSchema = new Schema({
     type: String,
     required: false
   },
-  articles: [{ type: mongoose.Schema.Types.ObjectId, ref: "sections" }]
+  keywords: [{ type: String }],
+  articles: [SectionRefSchema]
 });
 
 module.exports = ArticleGroup = mongoose.model(

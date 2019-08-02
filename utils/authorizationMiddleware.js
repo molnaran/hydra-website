@@ -22,7 +22,6 @@ const hasPermissionLevel = permissionlevel => (req, res, next) => {
 };
 
 const filterUserFields = (queryuserid = null) => (req, res, next) => {
-  console.log("filterUserFields");
   var basicViewFields = ["_id", "firstname", "lastname", "email", "avatar"];
   var ownFields = [];
   switch (req.user.permissionlevel) {

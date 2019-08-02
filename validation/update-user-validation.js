@@ -1,7 +1,7 @@
 const Validator = require("validator");
 const isEmpty = require("./is-empty");
 
-module.exports = function validateUpdateUserInput(data) {
+function validateUpdateUserInput(data) {
   let errors = {};
   var tempData = {};
   tempData.permissionlevel = !isEmpty(data.permissionlevel)
@@ -26,4 +26,6 @@ module.exports = function validateUpdateUserInput(data) {
     errors,
     isValid: isEmpty(errors)
   };
-};
+}
+
+module.exports = { validateUpdateUserInput };

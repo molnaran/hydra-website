@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const multer = require("multer");
 const connect = require("connect");
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads");
@@ -89,6 +90,7 @@ router.post(
 router.post(
   "/login",
   asyncMiddleware(async (req, res, next) => {
+    console.log(req);
     const { errors, isValid } = validateLoginInput(req.body);
     if (!isValid) {
       return res.status(400).json(errors);
@@ -129,9 +131,9 @@ router.get(
   "/profile",
   passport.authenticate("jwt", { session: false }),
   asyncMiddleware(async (req, res, next) => {
-    var currentUser = await User.findById(req.user.id).select(
-      getReturnableFieldsForOwnProfile(req.user.id)
-    );
+    var currentUser = await User.findById(req.user.id)
+      .select(getReturnableFieldsForOwnProfile(req.user.id))
+      .lean();
     return res.json({
       result: "Success",
       data: currentUser
@@ -157,7 +159,7 @@ router.post(
       { _id: req.user.id },
       { $set: { avatar: avatarPath } },
       { upsert: false, useFindAndModify: false, new: true }
-    ).exec();
+    );
     return res.json({
       result: "Success!",
       msg: "Avatar successfully uploaded!",
@@ -235,7 +237,9 @@ router.get(
   hasPermissionLevelAndFilter(2, "5d39be49c6c522493c4151fa"),
   asyncMiddleware(async (req, res, next) => {
     console.log(req.user.permissionlevel);
-    const users = await User.find({}).select(req.user.readfields);
+    const users = await User.find({})
+      .select(req.user.readfields)
+      .lean();
     return res.json(users);
   })
 );

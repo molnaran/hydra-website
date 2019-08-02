@@ -30,6 +30,7 @@ const upload = multer({
 const asyncMiddleware = require("../../utils/asyncMiddleware");
 const authMiddleware = require("../../utils/authorizationMiddleware");
 const Section = require("../../models/Section");
+const ArticleGroup = require("../../models/ArticleGroup");
 const SectionRef = require("../../models/SectionRef");
 const Paragraph = require("../../models/Paragraph");
 const Image = require("../../models/Image");
@@ -41,7 +42,11 @@ var ObjectId = require("mongoose").Types.ObjectId;
 router.get(
   "/:id",
   asyncMiddleware(async (req, res, next) => {
-    let response = await Section.findOne({ _id: req.params.id });
+    let response = await Section.findOne({ _id: req.params.id }).lean();
+    if (!response)
+      return res
+        .status(404)
+        .json({ result: "Failure", msg: "Section not found!" });
     return res.json(response);
   })
 );
@@ -73,28 +78,33 @@ router.delete(
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
     if (!req.params.id) throw new Error("content id not found");
-    /*
-    var result = await Section.updateMany(
-      {},
-      { $pull: { content: { section: new ObjectId(req.params.id) } } },
-      { useFindAndModify: false, new: true }
-    );
-    await Sections.deleteOne({ _id: req.params.id });
-    return res.json(result);
-  */
+    var deleteresult;
     await Promise.all([
       await Section.updateMany(
         {},
         { $pull: { content: { section: new ObjectId(req.params.id) } } },
         { useFindAndModify: false, new: true }
       ),
-      await Section.deleteOne({ _id: req.params.id })
+      await ArticleGroup.updateMany(
+        {},
+        { $pull: { articles: { section: new ObjectId(req.params.id) } } },
+        { useFindAndModify: false, new: true }
+      ),
+      (deleteresult = await Section.deleteOne({ _id: req.params.id }))
     ]);
-    return res.json({
-      id: req.params.id,
-      result: "Success",
-      msg: "Resource deleted"
-    });
+    if (deleteresult.deletedCount === 0) {
+      return res.json({
+        id: req.params.id,
+        result: "Failure",
+        msg: "Resource not found"
+      });
+    } else {
+      return res.json({
+        id: req.params.id,
+        result: "Success",
+        msg: "Resource deleted"
+      });
+    }
   })
 );
 
@@ -268,16 +278,18 @@ router.delete(
     const removeContent = removeItems.length > 0 ? removeItems[0] : null;
 
     if (removeContent === null) throw new Error("Object to be moved not found");
-    switch (removeContent.contenttype) {
-      case "image":
+
+    const unLinkAvatar = async removeContent => {
+      if (removeContent.contenttype === "image") {
         const normalizedPath = path.normalize(removeContent.path);
         if (!normalizedPath.startsWith("uploads"))
           throw Error("resource cannot be deleted");
         await unlink(normalizedPath);
-        break;
-    }
+      }
+    };
+
     parentSection.content = remainingItems;
-    await parentSection.save();
+    await Promise.all([await parentSection.save(), await unLinkAvatar]);
     return res.json(parentSection);
   })
 );
