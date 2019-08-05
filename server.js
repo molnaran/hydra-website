@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const passport = require("passport");
+const expressValidator = require("express-validator");
 
 const users = require("./routes/api/users");
 const articlegroup = require("./routes/api/articlegroup");

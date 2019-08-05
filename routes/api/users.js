@@ -33,6 +33,9 @@ const validateUpdateProfileInput = require("../../validation/update-profile-vali
 const validateUpdateUser = require("../../validation/update-user-validation");
 const authMiddleware = require("../../utils/authorizationMiddleware");
 
+const validator = require("../../validation/my-user-validator");
+const { validationResult } = require("express-validator/check");
+
 var restrictToSelfAndFilter = userid => {
   var chain = connect();
   chain.use(authMiddleware.restrictToSelf(userid));
@@ -57,11 +60,15 @@ const keys = require("../../config/keys");
 router.post(
   "/register",
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validateRegisterInput(req.body);
-    if (!isValid) {
-      return res.status(400).json(errors);
-    }
     var user = await User.findOne({ email: req.body.email });
+    const { errors, isValid } = validator.validate(
+      "createUser",
+      req.body,
+      req.user
+    );
+    if (!isValid) {
+      return res.json(errors);
+    }
     if (user) {
       errors.email = "Email already exists";
       return res.status(400).json(errors);
@@ -174,8 +181,13 @@ router.post(
 router.patch(
   "/profile",
   passport.authenticate("jwt", { session: false }),
+  authMiddleware.filterUserFields(),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validateUpdateProfileInput(req.body);
+    const { errors, isValid } = validator.validate(
+      "updateUser",
+      req.body,
+      req.user
+    );
     if (!isValid) {
       return res.status(400).json(errors);
     }

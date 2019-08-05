@@ -40,12 +40,7 @@ const filterUserFields = (queryuserid = null) => (req, res, next) => {
     ownFields = ["_id", "firstname", "lastname", "email", "avatar"];
   }
   req.user.viewFields = [...basicViewFields, ...ownFields];
-  req.user.updatableFields = [
-    "_id",
-    "password",
-    "date",
-    ...req.user.viewFields
-  ];
+  req.user.updatableFields = ["password", "date", ...req.user.viewFields];
   next();
 };
 
