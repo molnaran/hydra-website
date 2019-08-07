@@ -27,25 +27,37 @@ const uploadAvatar = multer({
   fileFilter: fileFilter
 });
 
-const validateRegisterInput = require("../../validation/register");
-const validateLoginInput = require("../../validation/login");
-const validateUpdateProfileInput = require("../../validation/update-profile-validation");
-const validateUpdateUser = require("../../validation/update-user-validation");
 const authMiddleware = require("../../utils/authorizationMiddleware");
 
-const validator = require("../../validation/my-user-validator");
-const { validationResult } = require("express-validator/check");
+const validator = require("../../validation/user-validator");
 
-var restrictToSelfAndFilter = userid => {
-  var chain = connect();
-  chain.use(authMiddleware.restrictToSelf(userid));
-  chain.use(authMiddleware.filterUserFields(userid));
-  return chain;
-};
 const hasPermissionLevelAndFilter = (permissionlevel, userid) => {
   var chain = connect();
   chain.use(authMiddleware.hasPermissionLevel(permissionlevel));
   chain.use(authMiddleware.filterUserFields(userid));
+  return chain;
+};
+
+const authAndFilterByPermission = userid => {
+  var chain = connect();
+  chain.use(passport.authenticate("jwt", { session: false }));
+  chain.use(authMiddleware.filterUserFieldsByPermission());
+  return chain;
+};
+const authAndFilterByIdAndPermission = userid => {
+  var chain = connect();
+  chain.use(passport.authenticate("jwt", { session: false }));
+
+  chain.use(authMiddleware.filterUserFieldsByPermission());
+  chain.use(authMiddleware.filterUserFieldsById(userid));
+  return chain;
+};
+
+const authAndFilterForOwnerAndPermission = () => {
+  var chain = connect();
+  chain.use(passport.authenticate("jwt", { session: false }));
+  chain.use(authMiddleware.filterUserFieldsByPermission());
+  chain.use(authMiddleware.filterUserFieldsForOwner());
   return chain;
 };
 
@@ -61,17 +73,21 @@ router.post(
   "/register",
   asyncMiddleware(async (req, res, next) => {
     var user = await User.findOne({ email: req.body.email });
-    const { errors, isValid } = validator.validate(
-      "createUser",
-      req.body,
-      req.user
-    );
+    const { errors, isValid } = validator.validate("registerUser", req);
     if (!isValid) {
-      return res.json(errors);
+      return res.json({
+        result: "Failure",
+        msg: "Registration failed!",
+        data: errors
+      });
     }
     if (user) {
       errors.email = "Email already exists";
-      return res.status(400).json(errors);
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Registration failed!",
+        data: errors
+      });
     } else {
       const newUser = new User({
         firstname: req.body.firstname,
@@ -79,13 +95,17 @@ router.post(
         email: req.body.email,
         password: req.body.password
       });
-      const salt = await bcrypt.genSalt(10);
-      const hash = await bcrypt.hash(newUser.password, salt);
-      newUser.password = hash;
+      newUser.password = await hashPassword(newUser.password);
       await newUser.save();
       return res.json({
         result: "Success",
-        data: filterObject(newUser, getReturnableFieldsForOwnProfile())
+        msg: "Registration successful!",
+        data: {
+          id: newUser.id,
+          email: newUser.email,
+          firstname: newUser.firstname,
+          lastname: newUser.lastname
+        }
       });
     }
   })
@@ -97,10 +117,13 @@ router.post(
 router.post(
   "/login",
   asyncMiddleware(async (req, res, next) => {
-    console.log(req);
-    const { errors, isValid } = validateLoginInput(req.body);
+    const { errors, isValid } = validator.validate("loginUser", req);
     if (!isValid) {
-      return res.status(400).json(errors);
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Login failed!",
+        data: errors
+      });
     }
     const email = req.body.email;
     const password = req.body.password;
@@ -108,7 +131,11 @@ router.post(
     var user = await User.findOne({ email });
     if (!user) {
       errors.email = "User not found!";
-      return res.status(404).json(errors);
+      return res.status(404).json({
+        result: "Failure",
+        msg: "Login failed!",
+        data: errors
+      });
     }
     const isMatch = await bcrypt.compare(password, user.password);
     if (isMatch) {
@@ -136,13 +163,14 @@ router.post(
 //@access   Private
 router.get(
   "/profile",
-  passport.authenticate("jwt", { session: false }),
+  authAndFilterForOwnerAndPermission(),
   asyncMiddleware(async (req, res, next) => {
     var currentUser = await User.findById(req.user.id)
-      .select(getReturnableFieldsForOwnProfile(req.user.id))
+      .select(req.user.viewFields)
       .lean();
     return res.json({
       result: "Success",
+      msg: "Profile returned",
       data: currentUser
     });
   })
@@ -151,12 +179,20 @@ router.get(
 //@route    POST api/users/profile/avatar
 //@desc     Create avatar for profile
 //@access   Private
-router.post(
+router.put(
   "/profile/avatar",
   uploadAvatar.single("avatar"),
-  passport.authenticate("jwt", { session: false }),
+  authAndFilterForOwnerAndPermission(),
   asyncMiddleware(async (req, res, next) => {
-    if (!req.file) throw new Error("image not found");
+    const { errors, isValid } = validator.validate("uploadAvatar", req);
+    if (!isValid) {
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Login failed!",
+        data: errors
+      });
+    }
+
     const avatarPath = (
       req.file.destination +
       "/" +
@@ -170,7 +206,7 @@ router.post(
     return res.json({
       result: "Success!",
       msg: "Avatar successfully uploaded!",
-      data: filterObject(currentUser, getReturnableFieldsForOwnProfile())
+      data: filterObject(currentUser, req.user.viewFields)
     });
   })
 );
@@ -180,18 +216,20 @@ router.post(
 //@access   Private
 router.patch(
   "/profile",
-  passport.authenticate("jwt", { session: false }),
-  authMiddleware.filterUserFields(),
+  authAndFilterForOwnerAndPermission(),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validator.validate(
-      "updateUser",
-      req.body,
-      req.user
-    );
+    const { errors, isValid } = validator.validate("updateUser", req);
     if (!isValid) {
-      return res.status(400).json(errors);
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Update failed!",
+        data: errors
+      });
     }
-    var patchFields = filterObject(req.body, getUpdatableFieldsForOwnProfile());
+    var patchFields = filterObject(req.body, req.user.updatableFields);
+    if (patchFields.password !== undefined) {
+      patchFields.password = await hashPassword(patchFields.password);
+    }
     var currentUser = await User.findOneAndUpdate(
       { _id: req.user.id },
       { $set: patchFields },
@@ -200,7 +238,7 @@ router.patch(
     return res.json({
       result: "Success!",
       msg: "Profile successfully updated!",
-      data: filterObject(currentUser, getReturnableFieldsForOwnProfile())
+      data: filterObject(currentUser, req.user.viewFields)
     });
   })
 );
@@ -210,7 +248,8 @@ router.patch(
 //@access   Private
 router.delete(
   "/profile",
-  passport.authenticate("jwt", { session: false }),
+  authAndFilterForOwnerAndPermission(),
+  authMiddleware.hasPermissionLevel(3),
   asyncMiddleware(async (req, res, next) => {
     var user = await User.findOneAndDelete({ _id: req.user.id });
     if (!user) {
@@ -221,7 +260,7 @@ router.delete(
       res.status(200).json({
         result: "Success",
         msg: "User successfully deleted!",
-        data: filterObject(user, getReturnableFieldsForOwnProfile())
+        data: filterObject(user, req.user.viewFields)
       });
     }
   })
@@ -232,10 +271,17 @@ router.delete(
 //@access   Private permissionlevel 2
 router.get(
   "/:id",
-  passport.authenticate("jwt", { session: false }),
-  restrictToSelfAndFilter("id"),
+  authAndFilterByIdAndPermission("id"),
+  authMiddleware.hasPermissionLevel(3),
   asyncMiddleware(async (req, res, next) => {
-    var user = await User.findById(req.user.id).select(req.user.viewFields);
+    var user = await User.findById(req.user.id)
+      .select(req.user.viewFields)
+      .lean();
+    if (!user)
+      return res.status(404).json({
+        result: "Failure",
+        msg: "User not found!"
+      });
     return res.json(user);
   })
 );
@@ -245,10 +291,9 @@ router.get(
 //@access   Private, permissionlevel 2
 router.get(
   "/",
-  passport.authenticate("jwt", { session: false }),
-  hasPermissionLevelAndFilter(2, "5d39be49c6c522493c4151fa"),
+  authAndFilterByPermission,
+  authMiddleware.hasPermissionLevel(3),
   asyncMiddleware(async (req, res, next) => {
-    console.log(req.user.permissionlevel);
     const users = await User.find({})
       .select(req.user.readfields)
       .lean();
@@ -258,17 +303,18 @@ router.get(
 
 router.patch(
   "/:id",
-  passport.authenticate("jwt", { session: false }),
+  authAndFilterByIdAndPermission("id"),
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validateUpdateUser(req.body);
+    const { errors, isValid } = validator.validate("updateUser", req);
     if (!isValid) {
-      return res.status(400).json(errors);
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Update failed!",
+        data: errors
+      });
     }
-    var patchFields = filterObject(
-      req.body,
-      getUpdatableFieldsWithPermissionlevel(req.user.permissionlevel)
-    );
+    var patchFields = filterObject(req.body, req.user.viewFields);
 
     var currentUser = await User.findOneAndUpdate(
       { _id: req.params.id },
@@ -277,10 +323,7 @@ router.patch(
     ).exec();
     return res.json({
       result: "Success!",
-      data: filterObject(
-        currentUser,
-        getReturnableFieldsWithPermissionlevel(req.user.permissionlevel)
-      )
+      data: filterObject(currentUser, req.user.updatableFields)
     });
   })
 );
@@ -303,23 +346,10 @@ const getUpdatableFieldsWithPermissionlevel = permissionlevel => {
   return [];
 };
 
-const getReturnableFieldsWithPermissionlevel = permissionlevel => {
-  var basicFields = ["_id", "firstname", "lastname", "email", "avatar"];
-  if (permissionlevel === 2) {
-    basicFields.push("date", "enabled");
-  }
-  if (permissionlevel === 3) {
-    basicFields.push("enabled", "permissionlevel", "date");
-  }
-  return basicFields;
-};
-
-const getUpdatableFieldsForOwnProfile = () => {
-  return ["firstname", "lastname", "email", "password"];
-};
-
-const getReturnableFieldsForOwnProfile = () => {
-  return ["_id", "firstname", "lastname", "email", "avatar"];
+const hashPassword = async password => {
+  const salt = await bcrypt.genSalt(10);
+  const hash = await bcrypt.hash(password, salt);
+  return hash;
 };
 
 const filterObject = (objectToFilter, allowedFields) => {
