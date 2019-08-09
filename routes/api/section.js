@@ -35,6 +35,7 @@ const SectionRef = require("../../models/SectionRef");
 const Paragraph = require("../../models/Paragraph");
 const Image = require("../../models/Image");
 var ObjectId = require("mongoose").Types.ObjectId;
+const validator = require("../../validation/section-validator");
 
 //@route    GET api/section/:id
 //@desc     Finding and returning section with specified id
@@ -59,6 +60,14 @@ router.post(
   passport.authenticate("jwt", { session: false }),
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
+    const { errors, isValid } = validator.createSectionValidator(req.body);
+    if (!isValid) {
+      return res.json({
+        result: "Failure",
+        msg: "Section creation failed!",
+        data: errors
+      });
+    }
     const newSection = new Section({
       version: req.body.version,
       title: req.body.title,
@@ -116,11 +125,17 @@ router.put(
   passport.authenticate("jwt", { session: false }),
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
-    if (
-      req.body.newparentid === undefined ||
-      req.body.oldparentid === undefined
-    )
-      throw new Error("newparentid and oldparentid must be supplied!");
+    const { errors, isValid } = validator.moveContentValidator(
+      req.body,
+      req.params.id
+    );
+    if (!isValid) {
+      return res.json({
+        result: "Failure",
+        msg: "Move content failed!",
+        data: errors
+      });
+    }
 
     var oldparent = await Section.findOne({ _id: req.body.oldparentid });
 
@@ -188,7 +203,18 @@ router.post(
   passport.authenticate("jwt", { session: false }),
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
-    if (req.params.id === undefined) throw new Error("parentid is mandatory");
+    const { errors, isValid } = validator.addContentValidator(
+      req.body,
+      req.params.id,
+      req.file
+    );
+    if (!isValid) {
+      return res.json({
+        result: "Failure",
+        msg: "Add content failed!",
+        data: errors
+      });
+    }
     switch (req.body.type) {
       case "section":
         const newSection = new Section({
@@ -298,10 +324,7 @@ const getPosition = (positionParam, contentArray) => {
   var position;
   if (positionParam === null || positionParam === undefined) {
     position = contentArray.length;
-  } else if (
-    !Number.isInteger(positionParam) ||
-    positionParam > contentArray.length
-  ) {
+  } else if (positionParam > contentArray.length) {
     throw new Error("invalid position param");
   } else {
     position = positionParam;

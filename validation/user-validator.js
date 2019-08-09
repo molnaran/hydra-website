@@ -1,24 +1,6 @@
 const Validator = require("validator");
 const isEmpty = require("./is-empty");
 
-const validate = (method, req) => {
-  switch (method) {
-    case "registerUser": {
-      return createUserValidator(req.body);
-    }
-    case "updateUser": {
-      return updateUserValidator(req.body, req.user);
-    }
-    case "loginUser": {
-      return loginUserValidator(req.body);
-    }
-    case "uploadAvatar": {
-      return uploadAvatarValidatior(req.file);
-    }
-    default:
-      throw new Error("No validator found!");
-  }
-};
 const uploadAvatarValidatior = file => {
   let errors = {};
   file = !isEmpty(file) ? file : "";
@@ -67,14 +49,16 @@ const updateUserValidator = (data, user) => {
           data["permissionlevel"] = !isEmpty(data["permissionlevel"])
             ? data["permissionlevel"]
             : "";
-          if (!Validator.isInt(data["permissionlevel"], { min: 0, max: 3 })) {
+          if (
+            !Validator.isInt(data["permissionlevel"] + "", { min: 0, max: 3 })
+          ) {
             errors["permissionlevel"] =
               "Permissionlevel must be between 0 and 3";
           }
           break;
         case "enabled":
           data["enabled"] = !isEmpty(data["enabled"]) ? data["enabled"] : "";
-          if (!Validator.isBoolean(data["enabled"])) {
+          if (!Validator.isBoolean(data["enabled"] + "")) {
             errors["enabled"] = "Enabled must be either true or false";
           }
           break;
@@ -188,4 +172,9 @@ const createUserValidator = data => {
   };
 };
 
-module.exports = { validate };
+module.exports = {
+  createUserValidator,
+  updateUserValidator,
+  loginUserValidator,
+  uploadAvatarValidatior
+};

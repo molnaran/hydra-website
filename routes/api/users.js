@@ -73,7 +73,7 @@ router.post(
   "/register",
   asyncMiddleware(async (req, res, next) => {
     var user = await User.findOne({ email: req.body.email });
-    const { errors, isValid } = validator.validate("registerUser", req);
+    const { errors, isValid } = validator.createUserValidator(req.body);
     if (!isValid) {
       return res.json({
         result: "Failure",
@@ -117,7 +117,7 @@ router.post(
 router.post(
   "/login",
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validator.validate("loginUser", req);
+    const { errors, isValid } = validator.loginUserValidator(req.body);
     if (!isValid) {
       return res.status(400).json({
         result: "Failure",
@@ -184,7 +184,7 @@ router.put(
   uploadAvatar.single("avatar"),
   authAndFilterForOwnerAndPermission(),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validator.validate("uploadAvatar", req);
+    const { errors, isValid } = validator.uploadAvatarValidatior(req.file);
     if (!isValid) {
       return res.status(400).json({
         result: "Failure",
@@ -218,7 +218,10 @@ router.patch(
   "/profile",
   authAndFilterForOwnerAndPermission(),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validator.validate("updateUser", req);
+    const { errors, isValid } = validator.updateUserValidator(
+      req.body,
+      req.user
+    );
     if (!isValid) {
       return res.status(400).json({
         result: "Failure",
@@ -229,6 +232,17 @@ router.patch(
     var patchFields = filterObject(req.body, req.user.updatableFields);
     if (patchFields.password !== undefined) {
       patchFields.password = await hashPassword(patchFields.password);
+    }
+    if (
+      patchFields.email &&
+      (await doesEmailExists(patchFields.email, req.user._id))
+    ) {
+      errors.email = "Email already exists";
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Update failed!",
+        data: errors
+      });
     }
     var currentUser = await User.findOneAndUpdate(
       { _id: req.user.id },
@@ -306,7 +320,10 @@ router.patch(
   authAndFilterByIdAndPermission("id"),
   authMiddleware.hasPermissionLevel(2),
   asyncMiddleware(async (req, res, next) => {
-    const { errors, isValid } = validator.validate("updateUser", req);
+    const { errors, isValid } = validator.updateUserValidator(
+      req.body,
+      req.user
+    );
     if (!isValid) {
       return res.status(400).json({
         result: "Failure",
@@ -315,7 +332,17 @@ router.patch(
       });
     }
     var patchFields = filterObject(req.body, req.user.viewFields);
-
+    if (
+      patchFields.email &&
+      (await doesEmailExists(patchFields.email, req.params.id))
+    ) {
+      errors.email = "Email already exists";
+      return res.status(400).json({
+        result: "Failure",
+        msg: "Update failed!",
+        data: errors
+      });
+    }
     var currentUser = await User.findOneAndUpdate(
       { _id: req.params.id },
       { $set: patchFields },
@@ -350,6 +377,19 @@ const hashPassword = async password => {
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash(password, salt);
   return hash;
+};
+
+const doesEmailExists = async (email, currentuserid) => {
+  var userByEmail = await User.findOne({ email: email });
+  if (userByEmail === null) {
+    console.log("false");
+    return false;
+  }
+  if (userByEmail) {
+    return !userByEmail._id.equals(currentuserid);
+  } else {
+    return false;
+  }
 };
 
 const filterObject = (objectToFilter, allowedFields) => {
