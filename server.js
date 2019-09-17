@@ -7,6 +7,8 @@ const expressValidator = require("express-validator");
 const users = require("./routes/api/users");
 const articlegroup = require("./routes/api/articlegroup");
 const section = require("./routes/api/section");
+const race = require("./routes/api/race");
+const attribute = require("./routes/api/attribute");
 const admin = require("./routes/api/admin");
 const authMiddleware = require("./utils/authorizationMiddleware");
 
@@ -33,6 +35,8 @@ require("./config/passport")(passport);
 app.use("/api/users", users);
 app.use("/api/articlegroup", articlegroup);
 app.use("/api/section", section);
+app.use("/api/races", race);
+app.use("/api/attribute", attribute);
 app.use(
   "/api/admin",
   passport.authenticate("jwt", { session: false }),
